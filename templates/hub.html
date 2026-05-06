@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hub</title>
+<style>
+/* ── Reset & base ────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --glass-bg:     rgba(255, 255, 255, 0.09);
+  --glass-border: rgba(255, 255, 255, 0.18);
+  --glass-shine:  rgba(255, 255, 255, 0.30);
+  --glass-blur:   blur(48px) saturate(180%);
+  --text:         rgba(255, 255, 255, 0.92);
+  --text-dim:     rgba(255, 255, 255, 0.42);
+  --text-muted:   rgba(255, 255, 255, 0.22);
+  --radius-icon:  22px;
+  --easing:       cubic-bezier(.34,1.36,.64,1);
+}
+
+body {
+  font-family: -apple-system, 'SF Pro Display', 'SF Pro Text', BlinkMacSystemFont, sans-serif;
+  min-height: 100vh;
+  color: var(--text);
+  overflow-x: hidden;
+  /* Aurora background — Tahoe style */
+  background:
+    radial-gradient(ellipse 90% 70% at  10%  5%, rgba(130, 40, 255, 0.55) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 55% at  90% 15%, rgba(20,  90, 230, 0.50) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 60% at  50% 80%, rgba(180, 30, 200, 0.30) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at  80% 70%, rgba(10, 120, 200, 0.35) 0%, transparent 50%),
+    #080514;
+}
+
+/* Subtle noise grain */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Stats bar ───────────────────────────────────────────────────────────── */
+.stats-bar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 40px;
+  background: rgba(10, 5, 20, 0.35);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--glass-border);
+  box-shadow: 0 1px 0 var(--glass-shine) inset;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 20px;
+  z-index: 999;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.bar-brand {
+  font-size: 17px;
+  margin-right: 4px;
+  opacity: 0.9;
+  user-select: none;
+}
+
+.bar-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--glass-border);
+  flex-shrink: 0;
+}
+
+.stat-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+.stat-label {
+  color: var(--text-dim);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.stat-val { font-variant-numeric: tabular-nums; }
+
+.mini-track {
+  width: 44px;
+  height: 2.5px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.mini-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 1.2s ease, background-color 0.6s ease;
+}
+.fill-ok   { background: linear-gradient(90deg, #30d158, #34aadc); }
+.fill-warn { background: linear-gradient(90deg, #ffd60a, #ff9f0a); }
+.fill-hot  { background: linear-gradient(90deg, #ff453a, #ff6961); }
+
+.bar-clock {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+}
+
+/* ── Main layout ─────────────────────────────────────────────────────────── */
+.main {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 108px;
+  padding-bottom: 60px;
+}
+
+/* ── Greeting ────────────────────────────────────────────────────────────── */
+.greeting-block {
+  text-align: center;
+  margin-bottom: 64px;
+  animation: fadeUp 0.7s var(--easing) both;
+}
+
+.greeting-text {
+  font-size: clamp(36px, 5vw, 56px);
+  font-weight: 200;
+  letter-spacing: -1.5px;
+  line-height: 1.1;
+  background: linear-gradient(135deg, #fff 30%, rgba(180,140,255,0.8) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.date-text {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-dim);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+/* ── Section ─────────────────────────────────────────────────────────────── */
+.section {
+  width: 100%;
+  max-width: 680px;
+  padding: 0 28px;
+  animation: fadeUp 0.8s 0.1s var(--easing) both;
+}
+
+.section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 18px;
+  padding-left: 2px;
+}
+
+/* ── App grid ────────────────────────────────────────────────────────────── */
+.apps-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+/* ── App card ────────────────────────────────────────────────────────────── */
+.app-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  text-decoration: none;
+  color: var(--text);
+  position: relative;
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-icon-wrap {
+  width: 76px;
+  height: 76px;
+  border-radius: var(--radius-icon);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.25s var(--easing), box-shadow 0.25s ease;
+  /* Liquid glass base */
+  box-shadow:
+    inset 0 1.5px 0 rgba(255,255,255,0.38),
+    inset 0 -1px 0 rgba(0,0,0,0.15),
+    0 12px 40px rgba(0,0,0,0.45),
+    0 2px  8px  rgba(0,0,0,0.25);
+}
+
+/* Glass refraction layer */
+.app-icon-wrap::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  z-index: 0;
+}
+
+/* Top specular highlight */
+.app-icon-wrap::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 8%; right: 8%;
+  height: 38%;
+  background: linear-gradient(180deg,
+    rgba(255,255,255,0.32) 0%,
+    rgba(255,255,255,0.06) 60%,
+    transparent 100%);
+  border-radius: 0 0 50% 50%;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.app-emoji {
+  position: relative;
+  z-index: 1;
+  font-size: 34px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.app-card:hover .app-icon-wrap,
+.app-card:focus-visible .app-icon-wrap {
+  transform: scale(1.10) translateY(-3px);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255,255,255,0.42),
+    inset 0 -1px 0 rgba(0,0,0,0.12),
+    0 20px 56px rgba(0,0,0,0.55),
+    0 4px  12px rgba(0,0,0,0.3);
+}
+
+.app-card:active .app-icon-wrap {
+  transform: scale(0.97) translateY(0px);
+  transition-duration: 0.1s;
+}
+
+.app-name {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text);
+  text-align: center;
+  max-width: 80px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+
+/* Delete badge */
+.del-btn {
+  position: absolute;
+  top: -5px; right: -5px;
+  width: 19px; height: 19px;
+  border-radius: 50%;
+  background: rgba(30,10,40,0.80);
+  border: 1.5px solid rgba(255,255,255,0.25);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: background 0.15s;
+}
+.del-btn:hover { background: rgba(255,59,48,0.85); }
+.app-card:hover .del-btn { display: flex; }
+
+/* ── Add button ──────────────────────────────────────────────────────────── */
+.add-card .app-icon-wrap {
+  background: rgba(255,255,255,0.05);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(255,255,255,0.18),
+    0 4px 16px rgba(0,0,0,0.2);
+  border-radius: var(--radius-icon);
+}
+.add-card .app-icon-wrap::before { display: none; }
+.add-card .app-icon-wrap::after  { display: none; }
+.add-card .app-emoji {
+  font-size: 26px;
+  color: var(--text-dim);
+  font-style: normal;
+  font-family: inherit;
+}
+.add-card .app-name { color: var(--text-dim); }
+.add-card:hover .app-icon-wrap {
+  background: rgba(255,255,255,0.09);
+  box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.28),
+              0 8px 24px rgba(0,0,0,0.25);
+  transform: scale(1.06) translateY(-2px);
+}
+
+/* ── Modal overlay ───────────────────────────────────────────────────────── */
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(4, 0, 12, 0.60);
+  backdrop-filter: blur(16px) saturate(120%);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: fadeIn 0.2s ease;
+}
+.overlay.open { display: flex; }
+
+.modal {
+  width: 340px;
+  background: rgba(18, 8, 35, 0.72);
+  backdrop-filter: blur(60px) saturate(200%);
+  -webkit-backdrop-filter: blur(60px) saturate(200%);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 24px;
+  padding: 32px 28px 28px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.20),
+    0 40px 100px rgba(0,0,0,0.65),
+    0 8px  24px  rgba(0,0,0,0.35);
+  animation: modalIn 0.3s var(--easing);
+}
+
+.modal-title {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  margin-bottom: 24px;
+}
+
+.field { margin-bottom: 14px; }
+
+.field label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.field input {
+  width: 100%;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  padding: 9px 13px;
+  color: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
+}
+.field input::placeholder { color: var(--text-muted); }
+.field input:focus {
+  border-color: rgba(90, 150, 255, 0.55);
+  background: rgba(255,255,255,0.10);
+}
+.field input[type="color"] {
+  padding: 3px 7px;
+  height: 38px;
+  cursor: pointer;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.btn {
+  flex: 1;
+  padding: 10px 0;
+  border-radius: 11px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.07);
+  color: #fff;
+  transition: background 0.18s, transform 0.1s;
+}
+.btn:hover  { background: rgba(255,255,255,0.12); }
+.btn:active { transform: scale(0.97); }
+
+.btn-confirm {
+  background: rgba(10, 132, 255, 0.65);
+  border-color: rgba(10, 132, 255, 0.50);
+}
+.btn-confirm:hover { background: rgba(10, 132, 255, 0.80); }
+
+/* ── Animations ──────────────────────────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.94) translateY(10px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);    }
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════ Stats bar ══════════════ -->
+<div class="stats-bar">
+  <span class="bar-brand">⌘</span>
+  <div class="bar-sep"></div>
+
+  <div class="stat-chip">
+    <span class="stat-label">CPU</span>
+    <div class="mini-track"><div class="mini-fill fill-ok" id="cpuFill" style="width:0%"></div></div>
+    <span class="stat-val" id="cpuVal">—</span>
+  </div>
+
+  <div class="bar-sep"></div>
+
+  <div class="stat-chip">
+    <span class="stat-label">RAM</span>
+    <div class="mini-track"><div class="mini-fill fill-ok" id="ramFill" style="width:0%"></div></div>
+    <span class="stat-val" id="ramVal">—</span>
+  </div>
+
+  <div class="bar-sep"></div>
+
+  <div class="stat-chip">
+    <span class="stat-label">Диск</span>
+    <div class="mini-track"><div class="mini-fill fill-ok" id="dskFill" style="width:0%"></div></div>
+    <span class="stat-val" id="dskVal">—</span>
+  </div>
+
+  <span class="bar-clock" id="clock">—</span>
+</div>
+
+<!-- ══════════════ Main ══════════════ -->
+<div class="main">
+
+  <div class="greeting-block">
+    <div class="greeting-text" id="greeting">Привет</div>
+    <div class="date-text"    id="dateStr">—</div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Приложения</div>
+    <div class="apps-grid" id="appsGrid"></div>
+  </div>
+
+</div>
+
+<!-- ══════════════ Add modal ══════════════ -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-title">Новое приложение</div>
+
+    <div class="field">
+      <label>Иконка (эмодзи)</label>
+      <input id="fEmoji" type="text" maxlength="4" value="🔗" placeholder="🔗">
+    </div>
+    <div class="field">
+      <label>Название</label>
+      <input id="fName" type="text" placeholder="Моё приложение" maxlength="32">
+    </div>
+    <div class="field">
+      <label>URL</label>
+      <input id="fUrl" type="text" placeholder="https://example.com">
+    </div>
+    <div class="field">
+      <label>Цвет фона</label>
+      <input id="fColor" type="color" value="#5856D6">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn"         onclick="closeModal()">Отмена</button>
+      <button class="btn btn-confirm" onclick="saveApp()">Добавить</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Greeting & clock ──────────────────────────────────────────────────────────
+const GREET = [
+  'Доброй ночи','Доброй ночи','Доброй ночи','Доброй ночи','Доброй ночи',
+  'Доброе утро','Доброе утро','Доброе утро','Доброе утро','Доброе утро',
+  'Доброе утро','Доброе утро','Добрый день','Добрый день','Добрый день',
+  'Добрый день','Добрый день','Добрый день','Добрый день','Добрый вечер',
+  'Добрый вечер','Добрый вечер','Добрый вечер','Доброй ночи'
+];
+
+function tick() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  document.getElementById('greeting').textContent = GREET[now.getHours()];
+  document.getElementById('dateStr').textContent =
+    now.toLocaleDateString('ru-RU', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+}
+tick();
+setInterval(tick, 1000);
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+function fillClass(pct) {
+  if (pct > 85) return 'fill-hot';
+  if (pct > 60) return 'fill-warn';
+  return 'fill-ok';
+}
+
+async function loadStats() {
+  try {
+    const d = await (await fetch('/api/stats')).json();
+
+    const cpu = d.cpu;
+    document.getElementById('cpuVal').textContent = cpu + '%';
+    const cf = document.getElementById('cpuFill');
+    cf.style.width = cpu + '%';
+    cf.className = 'mini-fill ' + fillClass(cpu);
+
+    const ram = d.memory;
+    document.getElementById('ramVal').textContent =
+      ram.used.toFixed(1) + '/' + ram.total.toFixed(1) + ' ГБ';
+    const rf = document.getElementById('ramFill');
+    rf.style.width = ram.percent + '%';
+    rf.className = 'mini-fill ' + fillClass(ram.percent);
+
+    const dsk = d.disk;
+    document.getElementById('dskVal').textContent =
+      dsk.used.toFixed(0) + '/' + dsk.total.toFixed(0) + ' ГБ';
+    const df = document.getElementById('dskFill');
+    df.style.width = dsk.percent + '%';
+    df.className = 'mini-fill ' + fillClass(dsk.percent);
+  } catch {}
+}
+loadStats();
+setInterval(loadStats, 3000);
+
+// ── App grid ──────────────────────────────────────────────────────────────────
+async function renderApps() {
+  const grid = document.getElementById('appsGrid');
+  grid.innerHTML = '';
+
+  let apps = [];
+  try { apps = await (await fetch('/api/extensions')).json(); } catch {}
+
+  apps.forEach((app, i) => {
+    const a = document.createElement('a');
+    a.className = 'app-card';
+    a.href = app.url;
+    a.style.animationDelay = (i * 0.055) + 's';
+    a.style.animation = 'fadeUp 0.6s var(--easing) both';
+    a.innerHTML = `
+      <div class="app-icon-wrap" style="background: ${app.color}26;">
+        <div class="app-emoji">${app.emoji}</div>
+      </div>
+      <div class="app-name">${app.name}</div>
+      ${!app.builtin
+        ? `<button class="del-btn" title="Удалить" onclick="delApp(event,'${app.id}')">×</button>`
+        : ''}
+    `;
+    grid.appendChild(a);
+  });
+
+  // Add button
+  const add = document.createElement('div');
+  add.className = 'app-card add-card';
+  add.style.animation = `fadeUp 0.6s ${apps.length * 0.055}s var(--easing) both`;
+  add.innerHTML = `
+    <div class="app-icon-wrap">
+      <div class="app-emoji">+</div>
+    </div>
+    <div class="app-name">Добавить</div>
+  `;
+  add.onclick = openModal;
+  grid.appendChild(add);
+}
+renderApps();
+
+async function delApp(e, id) {
+  e.preventDefault(); e.stopPropagation();
+  await fetch('/api/extensions/' + id, { method: 'DELETE' });
+  renderApps();
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+const overlay = document.getElementById('overlay');
+
+function openModal()  { overlay.classList.add('open'); document.getElementById('fName').focus(); }
+function closeModal() { overlay.classList.remove('open'); }
+
+overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+async function saveApp() {
+  const name  = document.getElementById('fName').value.trim();
+  const url   = document.getElementById('fUrl').value.trim();
+  const emoji = document.getElementById('fEmoji').value.trim() || '🔗';
+  const color = document.getElementById('fColor').value;
+  if (!name || !url) return;
+
+  await fetch('/api/extensions', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ name, url, emoji, color }),
+  });
+
+  // Reset
+  document.getElementById('fName').value  = '';
+  document.getElementById('fUrl').value   = '';
+  document.getElementById('fEmoji').value = '🔗';
+  closeModal();
+  renderApps();
+}
+</script>
+</body>
+</html>

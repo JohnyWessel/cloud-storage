@@ -2,54 +2,322 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Локальное облако</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Моё облако</title>
     <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
-    <!-- Bootstrap 5 CSS CDN -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="container py-4">
-    <h1 class="mb-4">📂 Мое облако</h1>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body { background: #f5f6fa; }
 
-    <!-- Форма загрузки -->
-    <form action="/upload" method="post" enctype="multipart/form-data" class="mb-5 row g-2">
-        <div class="col-auto">
-            <input type="file" name="file" class="form-control" required>
+        .topbar {
+            background: #fff;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 1px 4px rgba(0,0,0,.06);
+        }
+        .topbar-title { font-weight: 700; font-size: 1.15rem; color: #2d3748; }
+
+        .sidebar {
+            background: #fff;
+            border-right: 1px solid #e2e8f0;
+            min-height: calc(100vh - 57px);
+            padding: 1.25rem 1rem;
+        }
+        .sidebar .label {
+            font-size: .7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            color: #94a3b8;
+            margin-bottom: .5rem;
+        }
+
+        /* ── table ── */
+        #fileTable td, #fileTable th { vertical-align: middle; }
+        .name-col { min-width: 220px; }
+
+        /* ── drag & drop ── */
+        tr.file-row       { cursor: grab; transition: opacity .15s; }
+        tr.file-row.dragging { opacity: .35; }
+
+        tr.folder-row     { cursor: pointer; }
+        tr.folder-row.drop-target {
+            background: #ebf4ff !important;
+            outline: 2px dashed #4299e1;
+            outline-offset: -2px;
+        }
+
+        /* drop zone for moving to parent folder */
+        #root-drop-zone {
+            border: 2px dashed #cbd5e0;
+            border-radius: 10px;
+            padding: .6rem 1rem;
+            color: #94a3b8;
+            font-size: .85rem;
+            text-align: center;
+            transition: background .15s, border-color .15s;
+            display: none;  /* shown only while dragging */
+        }
+        #root-drop-zone.active { display: block; }
+        #root-drop-zone.drop-target {
+            background: #ebf8ff;
+            border-color: #4299e1;
+            color: #2b6cb0;
+        }
+
+        .empty-state {
+            padding: 3rem 1rem;
+            text-align: center;
+            color: #94a3b8;
+        }
+        .empty-state i { font-size: 3rem; }
+    </style>
+</head>
+<body>
+
+<!-- ── Top bar ─────────────────────────────────────────────────────────────── -->
+<div class="topbar">
+    <span class="topbar-title">☁️ Моё облако</span>
+    <div class="d-flex align-items-center gap-3">
+        <span class="text-muted small"><i class="bi bi-person-circle"></i> {{ username }}</span>
+        <form action="/logout" method="post" class="mb-0">
+            <button type="submit" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-box-arrow-right"></i> Выйти
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="container-fluid">
+<div class="row g-0">
+
+<!-- ── Sidebar ─────────────────────────────────────────────────────────────── -->
+<div class="col-auto sidebar" style="width:240px;">
+    <div class="label">Загрузить файл</div>
+    <form action="/upload" method="post" enctype="multipart/form-data" class="mb-4">
+        <input type="hidden" name="path" value="{{ current_path }}">
+        <div class="mb-2">
+            <input type="file" name="file" class="form-control form-control-sm" required id="uploadInput">
         </div>
-        <div class="col-auto">
-            <button type="submit" class="btn btn-primary">Загрузить</button>
-        </div>
+        <button type="submit" class="btn btn-primary btn-sm w-100">
+            <i class="bi bi-cloud-upload"></i> Загрузить
+        </button>
     </form>
 
-    <!-- Таблица файлов -->
-    {% if files %}
-        <table class="table table-striped table-hover">
-            <thead>
-                <tr>
-                    <th>Имя файла</th>
-                    <th>Размер</th>
-                    <th>Действия</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for file in files %}
-                <tr>
-                    <td>{{ file.name }}</td>
-                    <td>{{ file.size_human }}</td>
-                    <td>
-                        <a href="/download/{{ file.name }}" class="btn btn-sm btn-success">Скачать</a>
-                        <form action="/delete/{{ file.name }}" method="post" style="display: inline;">
-                            <button type="submit" class="btn btn-sm btn-danger"
-                                    onclick="return confirm('Удалить {{ file.name }}?')">
-                                Удалить
-                            </button>
-                        </form>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% else %}
-        <div class="alert alert-info">Файлов пока нет. Загрузите первый файл.</div>
+    <div class="label">Создать папку</div>
+    <form action="/mkdir" method="post" class="mb-4">
+        <input type="hidden" name="path" value="{{ current_path }}">
+        <div class="mb-2">
+            <input type="text" name="name" class="form-control form-control-sm"
+                   placeholder="Название папки" required>
+        </div>
+        <button type="submit" class="btn btn-warning btn-sm w-100">
+            <i class="bi bi-folder-plus"></i> Создать
+        </button>
+    </form>
+
+    <hr>
+    <div class="label">Навигация</div>
+    <a href="/" class="btn btn-light btn-sm w-100 text-start mb-1">
+        <i class="bi bi-house"></i> Главная
+    </a>
+    {% if up_path is not none %}
+    <a href="/?path={{ up_path }}" class="btn btn-light btn-sm w-100 text-start">
+        <i class="bi bi-arrow-up"></i> На уровень выше
+    </a>
     {% endif %}
+</div>
+
+<!-- ── Main content ─────────────────────────────────────────────────────────── -->
+<div class="col p-4">
+
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb mb-0">
+            {% if current_path %}
+                <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                {% for crumb in breadcrumbs %}
+                    {% if loop.last %}
+                        <li class="breadcrumb-item active">{{ crumb.name }}</li>
+                    {% else %}
+                        <li class="breadcrumb-item">
+                            <a href="/?path={{ crumb.path }}">{{ crumb.name }}</a>
+                        </li>
+                    {% endif %}
+                {% endfor %}
+            {% else %}
+                <li class="breadcrumb-item active">Главная</li>
+            {% endif %}
+        </ol>
+    </nav>
+
+    <!-- Drop zone to move back to parent (shown while dragging) -->
+    {% if current_path %}
+    <div id="root-drop-zone"
+         data-folder-rel="{{ up_path }}"
+         ondragover="onFolderDragOver(event, this)"
+         ondragleave="onFolderDragLeave(event, this)"
+         ondrop="onFolderDrop(event, this)">
+        <i class="bi bi-arrow-up-circle"></i>
+        Перетащите файл сюда, чтобы переместить в «
+        {% if breadcrumbs|length > 1 %}{{ breadcrumbs[-2].name }}{% else %}Главную{% endif %}»
+    </div>
+    {% endif %}
+
+    <!-- File / Folder table -->
+    {% if folders or files %}
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0" id="fileTable">
+                <thead class="table-light">
+                    <tr>
+                        <th class="name-col ps-3">Имя</th>
+                        <th>Размер</th>
+                        <th class="text-end pe-3">Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+
+                <!-- ── Folders ── -->
+                {% for folder in folders %}
+                    {% set folder_rel = (current_path + '/' + folder.name) if current_path else folder.name %}
+                    <tr class="folder-row"
+                        data-folder-rel="{{ folder_rel }}"
+                        ondragover="onFolderDragOver(event, this)"
+                        ondragleave="onFolderDragLeave(event, this)"
+                        ondrop="onFolderDrop(event, this)">
+                        <td class="ps-3">
+                            <a href="/?path={{ folder_rel }}"
+                               class="text-decoration-none fw-semibold text-dark">
+                                <i class="bi bi-folder-fill text-warning me-2"></i>{{ folder.name }}
+                            </a>
+                        </td>
+                        <td class="text-muted small">—</td>
+                        <td class="text-end pe-3">
+                            <form action="/deletefolder/{{ folder_rel }}" method="post"
+                                  style="display:inline;"
+                                  onsubmit="return confirm('Удалить папку «{{ folder.name }}» и всё её содержимое?')">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Удалить папку">
+                                    <i class="bi bi-trash3"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+
+                <!-- ── Files ── -->
+                {% for file in files %}
+                    {% set file_rel = (current_path + '/' + file.name) if current_path else file.name %}
+                    <tr class="file-row"
+                        draggable="true"
+                        data-file-rel="{{ file_rel }}"
+                        ondragstart="onFileDragStart(event, this)"
+                        ondragend="onFileDragEnd(event, this)">
+                        <td class="ps-3">
+                            <i class="bi bi-file-earmark me-2 text-secondary"></i>{{ file.name }}
+                        </td>
+                        <td class="text-muted small">{{ file.size_human }}</td>
+                        <td class="text-end pe-3">
+                            <a href="/download/{{ file_rel }}"
+                               class="btn btn-sm btn-outline-success me-1" title="Скачать">
+                                <i class="bi bi-download"></i>
+                            </a>
+                            <form action="/delete/{{ file_rel }}" method="post"
+                                  style="display:inline;"
+                                  onsubmit="return confirm('Удалить «{{ file.name }}»?')">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Удалить">
+                                    <i class="bi bi-trash3"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% else %}
+    <div class="empty-state card shadow-sm">
+        <div class="card-body">
+            <i class="bi bi-folder2-open d-block mb-3"></i>
+            <p class="mb-0">Папка пуста.<br>Загрузите файл или создайте папку.</p>
+        </div>
+    </div>
+    {% endif %}
+
+</div><!-- /col -->
+</div><!-- /row -->
+</div><!-- /container-fluid -->
+
+<script>
+// ── Drag state ──────────────────────────────────────────────────────────────
+let draggedFileRel = null;
+
+function onFileDragStart(event, row) {
+    draggedFileRel = row.dataset.fileRel;
+    row.classList.add('dragging');
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', draggedFileRel);
+
+    // Show parent-folder drop zone if we're inside a subfolder
+    const rootZone = document.getElementById('root-drop-zone');
+    if (rootZone) rootZone.classList.add('active');
+}
+
+function onFileDragEnd(event, row) {
+    row.classList.remove('dragging');
+    draggedFileRel = null;
+    const rootZone = document.getElementById('root-drop-zone');
+    if (rootZone) rootZone.classList.remove('active');
+}
+
+// ── Folder drop-target handlers ─────────────────────────────────────────────
+function onFolderDragOver(event, el) {
+    if (!draggedFileRel) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    el.classList.add('drop-target');
+}
+
+function onFolderDragLeave(event, el) {
+    el.classList.remove('drop-target');
+}
+
+async function onFolderDrop(event, el) {
+    event.preventDefault();
+    el.classList.remove('drop-target');
+
+    const src = draggedFileRel;
+    if (!src) return;
+
+    const dst = el.dataset.folderRel ?? '';   // empty string = user root
+
+    try {
+        const resp = await fetch('/move', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ src, dst }),
+        });
+        if (resp.ok) {
+            window.location.reload();
+        } else {
+            const data = await resp.json().catch(() => ({}));
+            alert('Ошибка: ' + (data.detail || 'Не удалось переместить файл'));
+        }
+    } catch {
+        alert('Сетевая ошибка при перемещении файла');
+    }
+}
+</script>
+
 </body>
 </html>

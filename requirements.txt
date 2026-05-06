@@ -3,3 +3,5 @@ uvicorn[standard]
 jinja2
 python-multipart
 aiofiles
+itsdangerous
+psutil
