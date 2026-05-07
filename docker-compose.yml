@@ -1,1 +1,11 @@
+version: "3.8"
 
+services:
+  cloud:
+    build: .
+    container_name: my_cloud
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./storage:/app/storage
+    restart: unless-stopped
